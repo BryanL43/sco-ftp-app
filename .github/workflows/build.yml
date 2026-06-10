@@ -11,28 +11,27 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Extract Version
-        id: version
-        shell: pwsh
-        run: |
-          $VERSION = "${{ github.ref_name }}".TrimStart("v")
-          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-
-      - name: Read Build Config
-        id: config
-        run: python scripts/ExportBuildConfig.py
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
-          pip install pyinstaller
+
+      - name: Read Build Config
+        id: config
+        run: python scripts/ExportBuildConfig.py
+
+      - name: Extract Version
+        id: version
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.config.outputs.app_major }}.${{ steps.config.outputs.app_minor }}.${{ github.run_number }}"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
 
       - name: Build Application
         run: |
@@ -54,10 +53,10 @@ jobs:
             "dist\${{ steps.config.outputs.app_exe }}" `
             release\
 
-          Copy-Item `
-            "dist\Updater.exe" `
-            release\ `
-            -ErrorAction SilentlyContinue
+          # Copy-Item `
+          #   "dist\Updater.exe" `
+          #   release\ `
+          #   -ErrorAction SilentlyContinue
 
           Copy-Item `
             bin `
@@ -91,7 +90,7 @@ jobs:
             "${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip
