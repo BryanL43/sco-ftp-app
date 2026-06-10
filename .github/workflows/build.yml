@@ -79,7 +79,11 @@ jobs:
       - name: Compile NSIS Installer
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\NSIS\makensis.exe" .\installer\installer.nsi
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            /DAPP_VERSION="${{ steps.version.outputs.version }}" `
+            /DAPP_NAME="${{ steps.config.outputs.app_name }}" `
+            /DAPP_TO_PACKAGE_EXE="..\dist\${{ steps.config.outputs.app_name }}.exe" `
+            .\installer\installer.nsi
 
       - name: Copy Installer
         shell: pwsh

@@ -1,7 +1,15 @@
 ; Macros
-!define APP_VERSION "1.0.0"
-!define APP_NAME "ScoDexTransfer"
-!define APP_TO_PACKAGE_EXE "ScoTransfer.exe"
+!ifndef APP_VERSION
+  !error "APP_VERSION was not supplied"
+!endif
+
+!ifndef APP_NAME
+  !error "APP_NAME was not supplied"
+!endif
+
+!ifndef APP_TO_PACKAGE_EXE
+  !error "APP_TO_PACKAGE_EXE was not supplied"
+!endif
 
 !define DIST_DIR "..\dist"
 !define UNINSTALLER_NAME "uninstall.exe"
