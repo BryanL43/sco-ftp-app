@@ -95,6 +95,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
           files: |
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe
