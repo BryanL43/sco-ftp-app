@@ -79,7 +79,7 @@ FunctionEnd
 Section
   SetOutPath "$INSTDIR"
 
-  File "..\${APP_TO_PACKAGE_EXE}"
+  File "${APP_TO_PACKAGE_EXE}"
 
   SetOutPath "$INSTDIR\bin"
   File /r "..\bin\*"
@@ -97,9 +97,18 @@ Section
 
   ; Shortcuts
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
-  CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_TO_PACKAGE_EXE}"
-  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" "$INSTDIR\${UNINSTALLER_NAME}"
-  CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_TO_PACKAGE_EXE}"
+
+  CreateShortcut \
+    "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" \
+    "$INSTDIR\${APP_NAME}.exe"
+
+  CreateShortcut \
+    "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" \
+    "$INSTDIR\${UNINSTALLER_NAME}"
+
+  CreateShortcut \
+    "$DESKTOP\${APP_NAME}.lnk" \
+    "$INSTDIR\${APP_NAME}.exe"
 SectionEnd
 
 Section "Uninstall"
@@ -112,7 +121,7 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\${APP_NAME}"
 
   ; Remove application executable and uninstaller
-  Delete "$INSTDIR\${APP_TO_PACKAGE_EXE}"
+  Delete "$INSTDIR\${APP_NAME}.exe"
   Delete "$INSTDIR\${UNINSTALLER_NAME}"
 
   ; Remove application files and installation directory
