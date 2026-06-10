@@ -34,8 +34,24 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $VERSION = "${{ steps.config.outputs.app_major }}.${{ steps.config.outputs.app_minor }}.${{ github.run_number }}"
+          git fetch --tags --force
+
+          $MAJOR = "${{ steps.config.outputs.app_major }}"
+          $MINOR = "${{ steps.config.outputs.app_minor }}"
+          $PREFIX = "v$MAJOR.$MINOR."
+
+          $latest = git tag --list "$PREFIX*" --sort=-version:refname | Select-Object -First 1
+
+          if ($latest) {
+            $PATCH = [int]($latest -replace "^v$MAJOR\.$MINOR\.", "") + 1
+          }
+          else {
+            $PATCH = 0
+          }
+
+          $VERSION = "$MAJOR.$MINOR.$PATCH"
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $env:GITHUB_OUTPUT
 
       - name: Build Application
         run: |
@@ -98,8 +114,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          tag_name: ${{ steps.version.outputs.tag }}
           files: |
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe
