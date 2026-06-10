@@ -41,7 +41,7 @@ jobs:
             --noconsole `
             --windowed `
             --distpath dist `
-            --name "${{ steps.config.outputs.app_exe_base }}" `
+            --name "${{ steps.config.outputs.app_name }}" `
             "${{ steps.config.outputs.app_entry }}"
 
       - name: Prepare Release Directory
@@ -51,7 +51,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path release
 
           Copy-Item `
-            "dist\${{ steps.config.outputs.app_exe }}" `
+            "dist\${{ steps.config.outputs.app_name }}.exe" `
             release\
 
           # Copy-Item `
