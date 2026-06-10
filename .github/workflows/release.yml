@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Version
+        id: version
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.ref_name }}".TrimStart("v")
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+
+      - name: Read Build Config
+        id: config
+        run: python scripts/ExportBuildConfig.py
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Application
+        run: |
+          pyinstaller `
+            --onefile `
+            --noconsole `
+            --windowed `
+            --distpath dist `
+            --name "${{ steps.config.outputs.app_exe_base }}" `
+            "${{ steps.config.outputs.app_entry }}"
+
+      - name: Prepare Release Directory
+        shell: pwsh
+        run: |
+          Remove-Item release -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path release
+
+          Copy-Item `
+            "dist\${{ steps.config.outputs.app_exe }}" `
+            release\
+
+          Copy-Item `
+            "dist\Updater.exe" `
+            release\ `
+            -ErrorAction SilentlyContinue
+
+          Copy-Item `
+            bin `
+            release\bin `
+            -Recurse
+
+      - name: Create Update ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path release\* `
+            -DestinationPath "${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip"
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+            choco install nsis -y
+          }
+
+      - name: Compile NSIS Installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" .\installer\installer.nsi
+
+      - name: Copy Installer
+        shell: pwsh
+        run: |
+          Copy-Item `
+            "dist\${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe" `
+            "${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip
+            ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe
