@@ -17,7 +17,7 @@
 !define MUI_ICON ".\assets\sco-logo.ico"
 !define MUI_UNICON ".\assets\sco-logo.ico"
 
-; Imports
+; Dependencies
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 
