@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -73,9 +74,7 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: |
-          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
-            choco install nsis -y
-          }
+          choco install nsis -y
 
       - name: Compile NSIS Installer
         shell: pwsh
