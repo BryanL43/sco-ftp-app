@@ -1,35 +1,16 @@
-import os
-import logging
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 
 from util.AppConfig import load_app_config
+from util.Logger import Logger
 from util.UpdateManager import UpdateManager
 
 app_config = load_app_config()
 
 APP_NAME = app_config["app_name"]
 SHARED_DIR = Path(r"C:\\Users\\bryan\\Desktop\\SharedDir\\sco-ftp-app-versioning")
-
-# Ensure the log directory exists before configuring logging
-LOG_FILE = r"..\\logs\\app.log"
-os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    filename=LOG_FILE,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-def cleanup_update_files(update_manager: UpdateManager):
-    try:
-        update_manager.cleanup_update_files()
-    except Exception:
-        logger.exception("Update cleanup failed")
 
 def main():
     update_manager = UpdateManager(APP_NAME, SHARED_DIR)
@@ -41,7 +22,7 @@ def main():
     except Exception as e:
         # If any error occurs during the update check,
         # show a warning but allow the user to continue using the app
-        logger.exception("Update check failed")
+        Logger.exception("Update check failed")
         has_update = False
         latest_version = None
 
@@ -61,7 +42,7 @@ def main():
             try:
                 update_manager.launch_updater(latest_version)
             except Exception as e:
-                logger.exception("Update failed")
+                Logger.exception("Update failed")
                 messagebox.showerror("Update Failed", str(e), parent=dialog_root)
                 dialog_root.destroy()
                 return
@@ -73,9 +54,14 @@ def main():
 
     # Attempt to clean up any leftover update files from previous runs
     # without blocking startup
+    def cleanup_update_files():
+        try:
+            update_manager.cleanup_update_files()
+        except Exception:
+            Logger.exception("Update cleanup failed")
+
     threading.Thread(
         target=cleanup_update_files,
-        args=(update_manager,),
         daemon=True,
     ).start()
 

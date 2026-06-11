@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 class CreateUpdater:
+
     INSTALL_EXCLUSIONS = (
         "updater.exe",
         "updater.exe.sha256",
@@ -60,15 +61,15 @@ class CreateUpdater:
         log_dir = self.install_dir / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
-        logger.handlers.clear()
+        logging.basicConfig(
+            level=logging.INFO,
+            filename=log_dir / "updater.log",
+            format="[%(asctime)s] [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            force=True,
+        )
 
-        file_handler = logging.FileHandler(log_dir / "updater.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-        logger.addHandler(file_handler)
-
-        return logger
+        return logging.getLogger(__name__)
 
     def run(self):
         """
