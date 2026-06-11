@@ -1,6 +1,6 @@
 import argparse
+import fnmatch
 import logging
-import os
 import sys
 import subprocess
 import threading
@@ -14,20 +14,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
-log_file = r".\\logs\\updater.log"
-
-# Create directory if it doesn't exist
-os.makedirs(os.path.dirname(log_file), exist_ok=True)
-
-# Setup logging format and file
-logging.basicConfig(
-    level=logging.INFO,
-    filename=log_file,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
 class CreateUpdater:
+    INSTALL_EXCLUSIONS = (
+        "updater.exe",
+        "updater.exe.sha256",
+        "*.zip",
+    )
 
     def __init__(self, app_name: str, target_version: str):
         self.app_name = app_name
@@ -35,15 +27,12 @@ class CreateUpdater:
 
         self.install_dir = self.get_installed_dir()
 
-        self.package_dir = (
-            Path(tempfile.gettempdir())
-            / f"{self.app_name}_{self.target_version}_package"
-        )
-
         self.staging_dir = (
             Path(tempfile.gettempdir())
             / f"{self.app_name}_{self.target_version}_staging"
         )
+
+        self.logger = self._setup_logger()
 
     def get_installed_dir(self) -> Path:
         """
@@ -61,6 +50,24 @@ class CreateUpdater:
         except FileNotFoundError:
             raise RuntimeError(f"InstallLocation not found in registry for {self.app_name}")
 
+    def _setup_logger(self) -> logging.Logger:
+        """
+        Configure updater logging inside the installed application directory.
+        """
+
+        log_dir = self.install_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        logger.handlers.clear()
+
+        file_handler = logging.FileHandler(log_dir / "updater.log", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+        logger.addHandler(file_handler)
+
+        return logger
+
     def run(self):
         """
         Main execution point for the updater. It will perform the following steps sequentially.
@@ -68,7 +75,6 @@ class CreateUpdater:
 
         self._wait_for_app_exit()
         self._wait_for_file_unlock()
-        self._extract_update()
         self._validate_update()
         self._install_update()
         self._update_registry()
@@ -127,15 +133,6 @@ class CreateUpdater:
             f"Timed out waiting for {exe_path} to unlock."
         )
 
-    def _extract_update(self):
-        if self.staging_dir.exists():
-            shutil.rmtree(self.staging_dir)
-
-        shutil.copytree(
-            self.package_dir,
-            self.staging_dir,
-        )
-
     def _validate_update(self):
         """
         Validate the extracted update before installation.
@@ -163,6 +160,9 @@ class CreateUpdater:
             relative_path = source_path.relative_to(self.staging_dir)
             target_path = self.install_dir / relative_path
 
+            if self._is_excluded_from_install(relative_path):
+                continue
+
             if source_path.is_dir():
                 target_path.mkdir(parents=True, exist_ok=True)
                 continue
@@ -170,20 +170,30 @@ class CreateUpdater:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_path, target_path)
 
+    def _is_excluded_from_install(self, relative_path: Path) -> bool:
+        path = relative_path.as_posix().lower()
+        name = relative_path.name.lower()
+
+        return any(
+            fnmatch.fnmatch(name, exclusion) or fnmatch.fnmatch(path, exclusion)
+            for exclusion in self.INSTALL_EXCLUSIONS
+        )
+
     def _update_registry(self):
+        """
+        Update the registry with the new version information after a successful update.
+        """
+
         key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
 
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            winreg.SetValueEx(key, "AppName", 0, winreg.REG_SZ, self.app_name)
+        # Only update the AppVersion value since the updater does not change other metadata
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            key_path,
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
             winreg.SetValueEx(key, "AppVersion", 0, winreg.REG_SZ, self.target_version)
-            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(self.install_dir))
-            winreg.SetValueEx(
-                key,
-                "UninstallString",
-                0,
-                winreg.REG_SZ,
-                f'"{self.install_dir / "uninstall.exe"}"',
-            )
 
     # ========================================================================================== #
     # Updater UI
@@ -307,6 +317,6 @@ if __name__ == "__main__":
         if update_successful:
             updater.restart_application()
     except Exception as exc:
-        logger.exception("Update failed")
+        updater.logger.exception("Update failed")
         updater_ui.show_error_dialog(str(exc))
         sys.exit(1)

@@ -30,32 +30,32 @@ class UpdateManager:
 
     def launch_updater(self, latest_version: str) -> None:
         """
-        Copy the latest release ZIP from the shared drive into a temporary
-        working directory, extract the updater, and launch it.
+        Copy the latest update ZIP from the shared drive into a temporary
+        staging directory, extract the content/updater, and launch it.
         """
 
-        # Locate the release ZIP corresponding to the target version
+        # Get the update ZIP for the latest version in the shared directory
         source_zip = self._get_latest_zip(latest_version)
 
-        # Create a fresh temporary working directory for the update
-        temp_dir = Path(tempfile.gettempdir()) / f"{self.app_name}_{latest_version}_package"
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
+        # Create a temp staging directory for the update
+        staging_dir = Path(tempfile.gettempdir()) / f"{self.app_name}_{latest_version}_staging"
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
 
-        temp_dir.mkdir(parents=True)
+        staging_dir.mkdir(parents=True)
 
-        # Copy the release ZIP locally so the updater is not dependent
-        # on the shared drive remaining available
-        local_zip = temp_dir / source_zip.name
+        # Stage the update ZIP locally so the updater can continue even if
+        # the shared drive becomes unavailable during the update
+        local_zip = staging_dir / source_zip.name
         shutil.copy2(source_zip, local_zip)
 
-        # Extract the release contents into the temporary directory
+        # Extract the update contents into the temp staging directory
         with zipfile.ZipFile(local_zip, "r") as zip_ref:
-            zip_ref.extractall(temp_dir)
+            zip_ref.extractall(staging_dir)
 
         # Locate the updater executable within the extracted files
         updater_exe_name = "updater.exe"
-        updater_path = temp_dir / updater_exe_name
+        updater_path = staging_dir / updater_exe_name
         if not updater_path.exists():
             raise FileNotFoundError(f"{updater_exe_name} not found in {source_zip.name}")
 
@@ -86,9 +86,9 @@ class UpdateManager:
         return self._shared_version_file.read_text().strip()
 
     def cleanup_update_files(self) -> None:
-        for temp_dir in self._get_update_temp_dirs(self.get_local_version()):
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+        for staging_dir in self._get_update_staging_dirs(self.get_local_version()):
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
 
     # ========================================================================================== #
     # Internal functions
@@ -97,12 +97,11 @@ class UpdateManager:
     def _parse_version(self, version: str) -> tuple[int, int, int]:
         return tuple(int(part) for part in version.strip().split("."))
 
-    def _get_update_temp_dirs(self, target_version: str) -> tuple[Path, Path]:
-        temp_dir = Path(tempfile.gettempdir())
+    def _get_update_staging_dirs(self, target_version: str) -> tuple[Path, Path]:
+        staging_dir = Path(tempfile.gettempdir())
 
         return (
-            temp_dir / f"{self.app_name}_{target_version}_package",
-            temp_dir / f"{self.app_name}_{target_version}_staging",
+            staging_dir / f"{self.app_name}_{target_version}_staging",
         )
 
     def _get_latest_zip(self, latest_version: str) -> Path:
