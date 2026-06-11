@@ -1,4 +1,5 @@
 import argparse
+import subprocess
 import time
 import psutil
 import winreg
@@ -50,6 +51,7 @@ class CreateUpdater:
         self._extract_update()
         self._validate_update()
         self._install_update()
+        self._update_registry()
         self._cleanup()
         self._restart_application()
 
@@ -125,13 +127,48 @@ class CreateUpdater:
             raise RuntimeError(f"Missing bin directory: {bin_dir}")
 
     def _install_update(self):
-        pass
+        if not self.install_dir.exists():
+            raise RuntimeError(f"Install directory does not exist: {self.install_dir}")
+
+        for source_path in self.staging_dir.rglob("*"):
+            relative_path = source_path.relative_to(self.staging_dir)
+            target_path = self.install_dir / relative_path
+
+            if source_path.is_dir():
+                target_path.mkdir(parents=True, exist_ok=True)
+                continue
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+
+    def _update_registry(self):
+        key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            winreg.SetValueEx(key, "AppName", 0, winreg.REG_SZ, self.app_name)
+            winreg.SetValueEx(key, "AppVersion", 0, winreg.REG_SZ, self.target_version)
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(self.install_dir))
+            winreg.SetValueEx(
+                key,
+                "UninstallString",
+                0,
+                winreg.REG_SZ,
+                f'"{self.install_dir / "uninstall.exe"}"',
+            )
 
     def _cleanup(self):
-        pass
+        if self.package_dir.exists():
+            shutil.rmtree(self.package_dir)
+
+        if self.staging_dir.exists():
+            shutil.rmtree(self.staging_dir)
 
     def _restart_application(self):
-        pass
+        app_path = self.install_dir / f"{self.app_name}.exe"
+        if not app_path.exists():
+            raise RuntimeError(f"Application executable not found after update: {app_path}")
+
+        subprocess.Popen([str(app_path)], cwd=str(self.install_dir))
 
 
 if __name__ == "__main__":
