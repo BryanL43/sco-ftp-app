@@ -1,13 +1,13 @@
 name: Build
 
+# Allows the application & creates a GitHub release when a new tag is pushed.
 permissions:
   contents: write
 
+# Trigger the workflow manually from the Actions tab in GitHub.
+# No tag push trigger is used since the version is determined dynamically based on existing tags.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:

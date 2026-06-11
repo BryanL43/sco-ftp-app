@@ -5,7 +5,6 @@ import winreg
 import zipfile
 from pathlib import Path
 
-
 class UpdateManager:
 
     def __init__(self, app_name: str, updater_name: str, shared_dir: Path):
@@ -59,12 +58,14 @@ class UpdateManager:
         if not updater_path.exists():
             raise FileNotFoundError(f"{updater_exe_name} not found in {source_zip.name}")
 
-        # Launch the updater and pass the application name so it can
+        # Launch the updater and pass the required metadata so it can
         # locate the installed application and perform the update
         subprocess.Popen([
             str(updater_path),
             "--app-name",
             self.app_name,
+            "--target-version",
+            latest_version,
         ])
 
     def get_local_version(self) -> str:
