@@ -1,11 +1,31 @@
 import argparse
+import logging
+import os
+import sys
 import subprocess
+import threading
 import time
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import ttk
 import psutil
 import winreg
 import shutil
 import tempfile
 from pathlib import Path
+
+log_file = r".\\logs\\updater.log"
+
+# Create directory if it doesn't exist
+os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+# Setup logging format and file
+logging.basicConfig(
+    level=logging.INFO,
+    filename=log_file,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 class CreateUpdater:
 
@@ -13,7 +33,7 @@ class CreateUpdater:
         self.app_name = app_name
         self.target_version = target_version
 
-        self.install_dir = self.get_install_dir()
+        self.install_dir = self.get_installed_dir()
 
         self.package_dir = (
             Path(tempfile.gettempdir())
@@ -25,7 +45,7 @@ class CreateUpdater:
             / f"{self.app_name}_{self.target_version}_staging"
         )
 
-    def get_install_dir(self) -> Path:
+    def get_installed_dir(self) -> Path:
         """
         Retrieve the installation directory of the application from the Windows registry.
         """
@@ -52,7 +72,17 @@ class CreateUpdater:
         self._validate_update()
         self._install_update()
         self._update_registry()
-        self._restart_application()
+
+    def restart_application(self):
+        """
+        Launch the updated application after a successful update.
+        """
+
+        app_path = self.install_dir / f"{self.app_name}.exe"
+        if not app_path.exists():
+            raise RuntimeError(f"Application executable not found after update: {app_path}")
+
+        subprocess.Popen([str(app_path)], cwd=str(self.install_dir))
 
     def _wait_for_app_exit(self, timeout_seconds: int = 10) -> None:
         deadline = time.time() + timeout_seconds
@@ -155,12 +185,87 @@ class CreateUpdater:
                 f'"{self.install_dir / "uninstall.exe"}"',
             )
 
-    def _restart_application(self):
-        app_path = self.install_dir / f"{self.app_name}.exe"
-        if not app_path.exists():
-            raise RuntimeError(f"Application executable not found after update: {app_path}")
+    # ========================================================================================== #
+    # Updater UI
+    # ========================================================================================== #
 
-        subprocess.Popen([str(app_path)], cwd=str(self.install_dir))
+    class UpdaterUI:
+
+        def __init__(self, app_name: str):
+            self.app_name = app_name
+            self.stop_ui = threading.Event()
+            self.root = None
+            self.status_var = None
+
+        def start(self):
+            """
+            Start the UI in a separate thread so it can run concurrently with the update process
+            """
+
+            self.ui_thread = threading.Thread(target=self._show_ui, daemon=True)
+            self.ui_thread.start()
+
+        def stop(self):
+            """
+            Signal the UI to stop and close.
+            """
+
+            self.stop_ui.set()
+            self.ui_thread.join()
+
+        def show_error_dialog(self, message: str):
+            """
+            Show an error dialog with the given message.
+            """
+
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Update Failed", message)
+            root.destroy()
+
+        def _show_ui(self):
+            """
+            Create and display the updater UI.
+            """
+
+            self.root = tk.Tk()
+            self.root.title(f"Updating {self.app_name}")
+            self.root.resizable(False, False)
+            self._center_window(260, 110)
+
+            self.status_var = tk.StringVar(value="Updating")
+            status_label = ttk.Label(self.root, textvariable=self.status_var, font=("Segoe UI", 11))
+            status_label.pack(pady=(20, 10))
+
+            spinner = ttk.Progressbar(self.root, mode="indeterminate", length=190)
+            spinner.pack(pady=(0, 16))
+            spinner.start(12)
+
+            self._update_status()
+            self.root.mainloop()
+
+        def _center_window(self, width: int, height: int):
+            """
+            Center the updater window on the user's primary screen.
+            """
+
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = (screen_width - width) // 2
+            y = (screen_height - height) // 2
+            self.root.geometry(f"{width}x{height}+{x}+{y}")
+
+        def _update_status(self, frame: int = 0):
+            """
+            Update the status text to show a simple animated ellipsis while updating.
+            """
+
+            if self.stop_ui.is_set():
+                self.root.destroy()
+                return
+
+            self.status_var.set(f"Updating{'.' * (frame % 4)}")
+            self.root.after(400, self._update_status, frame + 1)
 
 
 if __name__ == "__main__":
@@ -182,6 +287,26 @@ if __name__ == "__main__":
         app_name=args.app_name,
         target_version=args.target_version,
     )
-    updater.run()
 
-    print("Success")
+    # Start the visual front updater UI in a separate thread
+    updater_ui = CreateUpdater.UpdaterUI(args.app_name)
+    updater_ui.start()
+    ui_started_at = time.monotonic()
+
+    update_successful = False
+
+    try:
+        try:
+            updater.run()
+            update_successful = True
+        finally:
+            # Induce a tiny delay to reduce the jarring UI transition for the user
+            time.sleep(max(0, 2 - (time.monotonic() - ui_started_at)))
+            updater_ui.stop()
+
+        if update_successful:
+            updater.restart_application()
+    except Exception as exc:
+        logger.exception("Update failed")
+        updater_ui.show_error_dialog(str(exc))
+        sys.exit(1)
