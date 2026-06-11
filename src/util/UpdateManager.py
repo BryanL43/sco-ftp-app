@@ -3,6 +3,7 @@ import hmac
 import shutil
 import subprocess
 import tempfile
+import time
 import winreg
 import zipfile
 from pathlib import Path
@@ -38,7 +39,7 @@ class UpdateManager:
         source_zip = self._get_latest_zip(latest_version)
 
         # Create a temp staging directory for the update
-        staging_dir = Path(tempfile.gettempdir()) / f"{self.app_name}_{latest_version}_staging"
+        staging_dir = self._get_update_staging_dir(latest_version)
         if staging_dir.exists():
             shutil.rmtree(staging_dir)
 
@@ -82,13 +83,38 @@ class UpdateManager:
         except FileNotFoundError:
             raise RuntimeError(f"AppVersion not found for {self.app_name}")
 
+    def get_installed_dir(self) -> Path:
+        key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                install_dir, _ = winreg.QueryValueEx(key, "InstallLocation")
+
+            return Path(install_dir)
+        except FileNotFoundError:
+            raise RuntimeError(f"InstallLocation not found for {self.app_name}")
+
     def get_latest_version(self) -> str:
         return self._shared_version_file.read_text().strip()
 
-    def cleanup_update_files(self) -> None:
-        for staging_dir in self._get_update_staging_dirs(self.get_local_version()):
-            if staging_dir.exists():
-                shutil.rmtree(staging_dir)
+    def cleanup_update_files(self, timeout_seconds: int = 5) -> None:
+        """
+        Remove any leftover update staging directories from previous runs.
+        """
+
+        staging_dir = self._get_update_staging_dir(self.get_local_version())
+        if staging_dir.exists():
+            deadline = time.time() + timeout_seconds
+
+            # Attempt to remove the staging directory
+            while time.time() < deadline:
+                try:
+                    shutil.rmtree(staging_dir)
+                    return
+                except (PermissionError, OSError):
+                    time.sleep(0.25)
+
+            shutil.rmtree(staging_dir)
 
     # ========================================================================================== #
     # Internal functions
@@ -97,12 +123,10 @@ class UpdateManager:
     def _parse_version(self, version: str) -> tuple[int, int, int]:
         return tuple(int(part) for part in version.strip().split("."))
 
-    def _get_update_staging_dirs(self, target_version: str) -> tuple[Path, Path]:
+    def _get_update_staging_dir(self, target_version: str) -> Path:
         staging_dir = Path(tempfile.gettempdir())
 
-        return (
-            staging_dir / f"{self.app_name}_{target_version}_staging",
-        )
+        return staging_dir / f"{self.app_name}_{target_version}_staging"
 
     def _get_latest_zip(self, latest_version: str) -> Path:
         zip_files = list(self.shared_dir.glob("*.zip"))

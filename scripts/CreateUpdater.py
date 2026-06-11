@@ -53,6 +53,8 @@ class CreateUpdater:
     def _setup_logger(self) -> logging.Logger:
         """
         Configure updater logging inside the installed application directory.
+        Has to be baked into the updater since updater do not live in the installed
+        application directory.
         """
 
         log_dir = self.install_dir / "logs"
@@ -241,7 +243,7 @@ class CreateUpdater:
             self.root = tk.Tk()
             self.root.title(f"Updating {self.app_name}")
             self.root.resizable(False, False)
-            self._center_window(260, 110)
+            self._center_window(360, 110)
 
             self.status_var = tk.StringVar(value="Updating")
             status_label = ttk.Label(self.root, textvariable=self.status_var, font=("Segoe UI", 11))

@@ -1,3 +1,6 @@
+import os
+import logging
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
@@ -10,19 +13,35 @@ app_config = load_app_config()
 APP_NAME = app_config["app_name"]
 SHARED_DIR = Path(r"C:\\Users\\bryan\\Desktop\\SharedDir\\sco-ftp-app-versioning")
 
+# Ensure the log directory exists before configuring logging
+LOG_FILE = r"..\\logs\\app.log"
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    filename=LOG_FILE,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+def cleanup_update_files(update_manager: UpdateManager):
+    try:
+        update_manager.cleanup_update_files()
+    except Exception:
+        logger.exception("Update cleanup failed")
+
 def main():
     update_manager = UpdateManager(APP_NAME, SHARED_DIR)
-
-    root = tk.Tk()
-    root.title(APP_NAME)
-    root.geometry("300x200")
+    dialog_root = tk.Tk()
+    dialog_root.withdraw()
 
     try:
         has_update, latest_version = update_manager.check_for_updates()
     except Exception as e:
         # If any error occurs during the update check,
         # show a warning but allow the user to continue using the app
-        print(f"Update check failed: {e}")
+        logger.exception("Update check failed")
         has_update = False
         latest_version = None
 
@@ -36,20 +55,34 @@ def main():
                 f"Latest: {latest_version}\n\n"
                 f"Install update now?"
             ),
+            parent=dialog_root,
         )
         if result:
             try:
                 update_manager.launch_updater(latest_version)
             except Exception as e:
-                messagebox.showerror("Update Failed", str(e))
-            else:
-                root.destroy()
+                logger.exception("Update failed")
+                messagebox.showerror("Update Failed", str(e), parent=dialog_root)
+                dialog_root.destroy()
                 return
-    else:
-        try:
-            update_manager.cleanup_update_files()
-        except Exception as e:
-            print(f"Update cleanup failed: {e}")
+            else:
+                dialog_root.destroy()
+                return
+
+    dialog_root.destroy()
+
+    # Attempt to clean up any leftover update files from previous runs
+    # without blocking startup
+    threading.Thread(
+        target=cleanup_update_files,
+        args=(update_manager,),
+        daemon=True,
+    ).start()
+
+    # Create the main application UI
+    root = tk.Tk()
+    root.title(APP_NAME)
+    root.geometry("300x200")
 
     tk.Label(
         root,
