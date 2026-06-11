@@ -26,9 +26,9 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Read Build Config
+      - name: Export application configuration
         id: config
-        run: python scripts/ExportBuildConfig.py
+        run: python scripts/ExportAppConfig.py
 
       - name: Extract Version
         id: version

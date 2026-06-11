@@ -87,13 +87,15 @@ Section
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\${UNINSTALLER_NAME}"
 
-  ; Windows Add/Remove Programs registry
+  ; Windows programs registry
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-    "DisplayName" "${APP_NAME}"
+    "AppName" "${APP_NAME}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "UninstallString" '"$INSTDIR\${UNINSTALLER_NAME}"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-    "DisplayVersion" "${APP_VERSION}"
+    "AppVersion" "${APP_VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
+    "InstallLocation" "$INSTDIR"
 
   ; Shortcuts
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
@@ -128,6 +130,6 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\bin"
   RMDir "$INSTDIR"
 
-  ; Remove Add/Remove Programs entry and application registry data
+  ; Remove programs entry and application registry data
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 SectionEnd

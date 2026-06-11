@@ -1,139 +1,122 @@
-import shutil
-import subprocess
-import tempfile
+import argparse
 import time
-import zipfile
-from pathlib import Path
 import psutil
-import requests
-from packaging.version import Version
-from configparser import ConfigParser
+import winreg
+import shutil
+import tempfile
+from pathlib import Path
 
-from ExportBuildConfig import load_build_config
+class CreateUpdater:
 
-config = load_build_config()
-APP_NAME = config["app_name"]
-APP_EXE = config["app_exe"]
+    def __init__(self, app_name: str):
+        self.app_name = app_name
+        self.install_dir = self.get_install_dir()
 
-GITHUB_OWNER = "BryanL43"
-GITHUB_REPO = "sco-ftp-app"
+    def get_install_dir(self) -> Path:
+        """
+        Retrieve the installation directory of the application from the Windows registry.
+        """
 
-GITHUB_LATEST_URL = (
-    f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
-)
+        key_path = (fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}")
 
-def get_latest_release():
-    response = requests.get(GITHUB_LATEST_URL, timeout=30)
-    response.raise_for_status()
+        try:
+            # Open the registry key for the application and read the InstallLocation value
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                install_dir, _ = winreg.QueryValueEx(key, "InstallLocation")
 
-    release = response.json()
+            return Path(install_dir)
+        except FileNotFoundError:
+            raise RuntimeError(f"InstallLocation not found in registry for {self.app_name}")
 
-    return {
-        "version": release["tag_name"].lstrip("v"),
-        "assets": release["assets"],
-    }
+    def run(self):
+        """
+        Main execution point for the updater. It will perform the following steps sequentially.
+        """
 
+        self.wait_for_app_exit()
+        self.wait_for_file_unlock()
+        self.extract_update()
+        self.validate_update()
+        self.install_update()
+        self.cleanup()
+        self.restart_application()
 
-def is_update_available(current_version: str):
-    latest = get_latest_release()
+    def wait_for_app_exit(self, timeout_seconds: int = 10) -> None:
+        deadline = time.time() + timeout_seconds
 
-    return Version(latest["version"]) > Version(current_version), latest
+        while time.time() < deadline:
+            is_running = False
 
+            for proc in psutil.process_iter(["name"]):
+                try:
+                    if (
+                        proc.info["name"]
+                        and proc.info["name"].lower()
+                        == f"{self.app_name}.exe".lower()
+                    ):
+                        is_running = True
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
 
-def find_zip_asset(release: dict):
-    for asset in release["assets"]:
-        if asset["name"].endswith(".zip"):
-            return asset
+            if not is_running:
+                return
 
-    raise RuntimeError("No ZIP asset found in release")
+            time.sleep(0.5)
 
+        raise TimeoutError(
+            f"Timed out waiting for {self.app_name}.exe to exit."
+        )
 
-def download_asset(asset: dict, destination: Path):
-    response = requests.get(
-        asset["browser_download_url"],
-        stream=True,
-        timeout=300,
-    )
-    response.raise_for_status()
+    def wait_for_file_unlock(self, timeout_seconds: int = 10) -> None:
+        exe_path = self.install_dir / f"{self.app_name}.exe"
 
-    with open(destination, "wb") as file:
-        for chunk in response.iter_content(1024 * 1024):
-            if chunk:
-                file.write(chunk)
+        deadline = time.time() + timeout_seconds
 
-    return destination
+        while time.time() < deadline:
+            try:
+                with open(exe_path, "ab"):
+                    return
+            except PermissionError:
+                time.sleep(0.5)
 
+        raise TimeoutError(
+            f"Timed out waiting for {exe_path} to unlock."
+        )
 
-def wait_for_process_exit(pid: int, timeout: int = 60):
-    try:
-        process = psutil.Process(pid)
-        process.wait(timeout=timeout)
-    except psutil.NoSuchProcess:
-        return
+    def extract_update(self):
+        update_source_dir = (Path(tempfile.gettempdir()) / "ScoFTPToolDownload")
 
+        self.staging_dir = (Path(tempfile.gettempdir()) / f"{self.app_name}_Update")
+        if self.staging_dir.exists():
+            shutil.rmtree(self.staging_dir)
 
-def extract_zip(zip_path: Path, destination: Path):
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        archive.extractall(destination)
+        shutil.copytree(update_source_dir, self.staging_dir)
 
-
-def replace_installation(source_dir: Path, install_dir: Path):
-    install_dir.mkdir(parents=True, exist_ok=True)
-
-    for item in source_dir.iterdir():
-        destination = install_dir / item.name
-
-        if destination.exists():
-            if destination.is_dir():
-                shutil.rmtree(destination)
-            else:
-                destination.unlink()
-
-        if item.is_dir():
-            shutil.copytree(item, destination)
-        else:
-            shutil.copy2(item, destination)
-
-
-def restart_application(install_dir: Path):
-    exe_path = install_dir / APP_EXE
-
-    subprocess.Popen(
-        [str(exe_path)],
-        cwd=str(install_dir),
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-    )
-
-
-def perform_update(current_pid: int, install_dir: str):
-    temp_dir = Path(tempfile.mkdtemp(prefix="scodex_update_"))
-
-    release = get_latest_release()
-
-    asset = find_zip_asset(release)
-
-    zip_path = temp_dir / asset["name"]
-
-    download_asset(asset, zip_path)
-
-    extract_dir = temp_dir / "extract"
-
-    extract_dir.mkdir()
-
-    extract_zip(zip_path, extract_dir)
-
-    wait_for_process_exit(current_pid)
-
-    replace_installation(
-        source_dir=extract_dir,
-        install_dir=Path(install_dir),
-    )
-
-    restart_application(Path(install_dir))
-
-
-def cleanup_temp_directory(path: Path):
-    try:
-        shutil.rmtree(path)
-    except Exception:
+    def validate_update(self):
         pass
+
+    def install_update(self):
+        pass
+
+    def cleanup(self):
+        pass
+
+    def restart_application(self):
+        pass
+
+
+if __name__ == "__main__":
+    # Parse the command line arguments to get the metadata
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--app-name",
+        required=True,
+    )
+    args = parser.parse_args()
+
+    # Create and run the updater
+    updater = CreateUpdater(app_name=args.app_name)
+    updater.run()
+
+    print("Success")
