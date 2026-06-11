@@ -8,8 +8,9 @@ from pathlib import Path
 
 class UpdateManager:
 
-    def __init__(self, app_name: str, shared_dir: Path):
+    def __init__(self, app_name: str, updater_name: str, shared_dir: Path):
         self.app_name = app_name
+        self.updater_name = updater_name
         self.shared_dir = shared_dir
 
         self._shared_version_file = shared_dir / "VERSION"
@@ -53,9 +54,10 @@ class UpdateManager:
             zip_ref.extractall(temp_dir)
 
         # Locate the updater executable within the extracted files
-        updater_path = temp_dir / "Updater.exe"
+        updater_exe_name = f"{self.updater_name}.exe"
+        updater_path = temp_dir / updater_exe_name
         if not updater_path.exists():
-            raise FileNotFoundError(f"Updater.exe not found in {source_zip.name}")
+            raise FileNotFoundError(f"{updater_exe_name} not found in {source_zip.name}")
 
         # Launch the updater and pass the application name so it can
         # locate the installed application and perform the update

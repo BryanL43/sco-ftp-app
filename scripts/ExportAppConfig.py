@@ -2,7 +2,7 @@ import os
 from configparser import ConfigParser
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Central application metadata file shared by the application,
 # updater, installer, and GitHub Actions workflow

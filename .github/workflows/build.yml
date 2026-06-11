@@ -54,6 +54,7 @@ jobs:
           echo "tag=v$VERSION" >> $env:GITHUB_OUTPUT
 
       - name: Build Application
+        shell: pwsh
         run: |
           pyinstaller `
             --onefile `
@@ -62,6 +63,17 @@ jobs:
             --distpath dist `
             --name "${{ steps.config.outputs.app_name }}" `
             "${{ steps.config.outputs.app_entry }}"
+
+      - name: Build Updater
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --onefile `
+            --noconsole `
+            --windowed `
+            --distpath dist `
+            --name "${{ steps.config.outputs.updater_name }}" `
+            "scripts\CreateUpdater.py"
 
       - name: Prepare Release Directory
         shell: pwsh
@@ -73,10 +85,9 @@ jobs:
             "dist\${{ steps.config.outputs.app_name }}.exe" `
             release\
 
-          # Copy-Item `
-          #   "dist\Updater.exe" `
-          #   release\ `
-          #   -ErrorAction SilentlyContinue
+          Copy-Item `
+            "dist\${{ steps.config.outputs.updater_name }}.exe" `
+            release\
 
           Copy-Item `
             bin `

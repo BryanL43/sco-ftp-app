@@ -8,10 +8,11 @@ from util.UpdateManager import UpdateManager
 app_config = load_app_config()
 
 APP_NAME = app_config["app_name"]
+UPDATER_NAME = app_config["updater_name"]
 SHARED_DIR = Path(r"C:\\Users\\bryan\\Desktop\\SharedDir\\sco-ftp-app-versioning")
 
 def main():
-    update_manager = UpdateManager(APP_NAME, SHARED_DIR)
+    update_manager = UpdateManager(APP_NAME, UPDATER_NAME, SHARED_DIR)
 
     root = tk.Tk()
     root.title(APP_NAME)
