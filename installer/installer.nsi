@@ -80,6 +80,7 @@ Section
   SetOutPath "$INSTDIR"
 
   File "${APP_TO_PACKAGE_EXE}"
+  File "..\application.ini"
 
   SetOutPath "$INSTDIR\bin"
   File /r "..\bin\*"
@@ -122,13 +123,8 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
 
-  ; Remove application executable and uninstaller
-  Delete "$INSTDIR\${APP_NAME}.exe"
-  Delete "$INSTDIR\${UNINSTALLER_NAME}"
-
-  ; Remove application files and installation directory
-  RMDir /r "$INSTDIR\bin"
-  RMDir "$INSTDIR"
+  ; Remove application files
+  RMDir /r "$INSTDIR"
 
   ; Remove programs entry and application registry data
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"

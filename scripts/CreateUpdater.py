@@ -52,7 +52,6 @@ class CreateUpdater:
         self._validate_update()
         self._install_update()
         self._update_registry()
-        self._cleanup()
         self._restart_application()
 
     def _wait_for_app_exit(self, timeout_seconds: int = 10) -> None:
@@ -155,13 +154,6 @@ class CreateUpdater:
                 winreg.REG_SZ,
                 f'"{self.install_dir / "uninstall.exe"}"',
             )
-
-    def _cleanup(self):
-        if self.package_dir.exists():
-            shutil.rmtree(self.package_dir)
-
-        if self.staging_dir.exists():
-            shutil.rmtree(self.staging_dir)
 
     def _restart_application(self):
         app_path = self.install_dir / f"{self.app_name}.exe"

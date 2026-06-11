@@ -2,16 +2,15 @@ import sys
 from configparser import ConfigParser
 from pathlib import Path
 
-# Determine the project root directory based on whether the app 
-# is running in a PyInstaller bundle or not
-if getattr(sys, "frozen", False):
-    PROJECT_ROOT = Path(sys._MEIPASS)
-else:
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+def _get_app_config_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "application.ini"
+
+    return Path(__file__).resolve().parents[2] / "application.ini"
 
 # Central application metadata file shared by the application,
 # updater, installer, and GitHub Actions workflow
-APP_CONFIG = PROJECT_ROOT / "application.ini"
+APP_CONFIG = _get_app_config_path()
 
 def load_app_config() -> dict[str, str]:
     """

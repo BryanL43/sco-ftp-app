@@ -46,6 +46,11 @@ def main():
             else:
                 root.destroy()
                 return
+    else:
+        try:
+            update_manager.cleanup_update_files()
+        except Exception as e:
+            print(f"Update cleanup failed: {e}")
 
     tk.Label(
         root,

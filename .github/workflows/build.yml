@@ -90,6 +90,10 @@ jobs:
             release\
 
           Copy-Item `
+            "application.ini" `
+            release\
+
+          Copy-Item `
             bin `
             release\bin `
             -Recurse

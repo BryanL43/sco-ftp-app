@@ -37,7 +37,7 @@ class UpdateManager:
         source_zip = self._get_latest_zip(latest_version)
 
         # Create a fresh temporary working directory for the update
-        temp_dir = Path(tempfile.gettempdir()) / f"{self.app_name}Download"
+        temp_dir = Path(tempfile.gettempdir()) / f"{self.app_name}_{latest_version}_package"
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
 
@@ -82,12 +82,25 @@ class UpdateManager:
     def get_latest_version(self) -> str:
         return self._shared_version_file.read_text().strip()
 
+    def cleanup_update_files(self) -> None:
+        for temp_dir in self._get_update_temp_dirs(self.get_local_version()):
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+
     # ========================================================================================== #
     # Internal functions
     # ========================================================================================== #
 
     def _parse_version(self, version: str) -> tuple[int, int, int]:
         return tuple(int(part) for part in version.strip().split("."))
+
+    def _get_update_temp_dirs(self, target_version: str) -> tuple[Path, Path]:
+        temp_dir = Path(tempfile.gettempdir())
+
+        return (
+            temp_dir / f"{self.app_name}_{target_version}_package",
+            temp_dir / f"{self.app_name}_{target_version}_staging",
+        )
 
     def _get_latest_zip(self, latest_version: str) -> Path:
         zip_files = list(self.shared_dir.glob("*.zip"))
