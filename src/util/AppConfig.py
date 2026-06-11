@@ -4,22 +4,20 @@ from pathlib import Path
 
 def _get_app_config_path() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "application.ini"
+        return Path(sys._MEIPASS) / "application.ini"
 
     return Path(__file__).resolve().parents[2] / "application.ini"
-
-# Central application metadata file shared by the application,
-# updater, installer, and GitHub Actions workflow
-APP_CONFIG = _get_app_config_path()
 
 def load_app_config() -> dict[str, str]:
     """
     Load and flatten all values from application.ini.
     """
 
+    app_config = _get_app_config_path()
+
     config = ConfigParser()
-    if not config.read(APP_CONFIG):
-        raise FileNotFoundError(APP_CONFIG)
+    if not config.read(app_config, encoding="utf-8"):
+        raise FileNotFoundError(app_config)
 
     result = {}
 

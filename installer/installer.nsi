@@ -80,7 +80,6 @@ Section
   SetOutPath "$INSTDIR"
 
   File "${APP_TO_PACKAGE_EXE}"
-  File "..\application.ini"
 
   SetOutPath "$INSTDIR\bin"
   File /r "..\bin\*"

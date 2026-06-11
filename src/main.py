@@ -54,7 +54,7 @@ def main():
 
     tk.Label(
         root,
-        text=f"{APP_NAME}\nVersion {update_manager.get_local_version()}",
+        text=f"{APP_NAME}\nVersion hi {update_manager.get_local_version()}",
     ).pack(expand=True)
 
     root.mainloop()
