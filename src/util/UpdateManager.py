@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import shutil
 import subprocess
 import tempfile
@@ -7,9 +9,8 @@ from pathlib import Path
 
 class UpdateManager:
 
-    def __init__(self, app_name: str, updater_name: str, shared_dir: Path):
+    def __init__(self, app_name: str, shared_dir: Path):
         self.app_name = app_name
-        self.updater_name = updater_name
         self.shared_dir = shared_dir
 
         self._shared_version_file = shared_dir / "VERSION"
@@ -53,10 +54,12 @@ class UpdateManager:
             zip_ref.extractall(temp_dir)
 
         # Locate the updater executable within the extracted files
-        updater_exe_name = f"{self.updater_name}.exe"
+        updater_exe_name = "updater.exe"
         updater_path = temp_dir / updater_exe_name
         if not updater_path.exists():
             raise FileNotFoundError(f"{updater_exe_name} not found in {source_zip.name}")
+
+        self._verify_updater_hash(updater_path)
 
         # Launch the updater and pass the required metadata so it can
         # locate the installed application and perform the update
@@ -117,3 +120,14 @@ class UpdateManager:
         raise FileNotFoundError(
             f"Could not identify the zip file for version {latest_version} in {self.shared_dir}"
         )
+
+    def _verify_updater_hash(self, updater_path: Path) -> None:
+        hash_file = updater_path.with_name("updater.exe.sha256")
+        if not hash_file.exists():
+            raise FileNotFoundError(f"Missing updater hash file: {hash_file.name}")
+
+        expected_hash = hash_file.read_text(encoding="utf-8").split()[0].lower()
+        actual_hash = hashlib.sha256(updater_path.read_bytes()).hexdigest()
+
+        if not hmac.compare_digest(actual_hash, expected_hash):
+            raise RuntimeError("Updater executable hash verification failed")

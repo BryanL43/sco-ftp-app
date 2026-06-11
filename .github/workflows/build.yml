@@ -72,7 +72,7 @@ jobs:
             --noconsole `
             --windowed `
             --distpath dist `
-            --name "${{ steps.config.outputs.updater_name }}" `
+            --name "updater" `
             "scripts\CreateUpdater.py"
 
       - name: Prepare Release Directory
@@ -86,8 +86,17 @@ jobs:
             release\
 
           Copy-Item `
-            "dist\${{ steps.config.outputs.updater_name }}.exe" `
+            "dist\updater.exe" `
             release\
+
+          $updaterHash = Get-FileHash `
+            -Algorithm SHA256 `
+            -Path "release\updater.exe"
+
+          Set-Content `
+            -Path "release\updater.exe.sha256" `
+            -Value "$($updaterHash.Hash.ToLowerInvariant())  updater.exe" `
+            -Encoding ascii
 
           Copy-Item `
             bin `
