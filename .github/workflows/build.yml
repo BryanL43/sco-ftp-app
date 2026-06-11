@@ -60,7 +60,7 @@ jobs:
             --onefile `
             --noconsole `
             --windowed `
-            --add-data "application.ini;."
+            --add-data "application.ini;." `
             --distpath dist `
             --name "${{ steps.config.outputs.app_name }}" `
             "${{ steps.config.outputs.app_entry }}"
