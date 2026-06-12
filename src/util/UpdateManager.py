@@ -3,13 +3,12 @@ import hmac
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
-import winreg
 import zipfile
 from pathlib import Path
 
+from util.ApplicationRegistry import ApplicationRegistry
 from util.UpdateManifest import UpdateManifest
 
 class UpdateManager:
@@ -31,37 +30,18 @@ class UpdateManager:
 
         Returns:
             tuple[bool, str]: Update availability and latest version.
+
+        Raises:
+            RuntimeError: If the registry value is not found.
         """
 
-        current_version = self.get_local_version()
+        current_version = ApplicationRegistry.get_display_version()
         latest_version = self.manifest.version
 
         return (
             self._parse_version(latest_version) > self._parse_version(current_version),
             latest_version,
         )
-
-    def get_local_version(self) -> str:
-        """
-        Retrieve the installed application version from the Windows registry.
-
-        Returns:
-            str: The installed application version.
-
-        Raises:
-            RuntimeError: If the DisplayVersion registry value is not found
-                in the Windows registry.
-        """
-
-        key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
-
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                version, _ = winreg.QueryValueEx(key, "DisplayVersion")
-
-            return version
-        except FileNotFoundError:
-            raise RuntimeError(f"DisplayVersion not found for {self.app_name}")
 
     def launch_updater(self) -> None:
         """
@@ -130,7 +110,7 @@ class UpdateManager:
             timeout_seconds (int): The maximum time to wait for file locks to be released.
         """
 
-        staging_dir = self._get_update_staging_dir(self.get_local_version())
+        staging_dir = self._get_update_staging_dir(ApplicationRegistry.get_display_version())
         if staging_dir.exists():
             deadline = time.time() + timeout_seconds
 

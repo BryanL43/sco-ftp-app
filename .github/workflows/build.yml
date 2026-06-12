@@ -129,9 +129,14 @@ jobs:
             created_at = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
           }
 
-          $json = $manifest | ConvertTo-Json
+          $json = $manifest | ConvertTo-Json -Depth 3
+          $json = $json -replace '":\s+', '": '
+
+          $preserveJson = (($manifest.preserve | ConvertTo-Json -Compress) -replace '","', '", "')
+          $json = $json -replace '(?s)"preserve":\s*\[.*?\]', "`"preserve`": $preserveJson"
+
           $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-          [System.IO.File]::WriteAllText("manifest.json", $json, $utf8NoBom)
+          [System.IO.File]::WriteAllText($manifestPath, $json, $utf8NoBom)
 
       - name: Install NSIS
         shell: pwsh
