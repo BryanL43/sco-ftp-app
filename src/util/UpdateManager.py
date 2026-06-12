@@ -1,12 +1,16 @@
 import hashlib
 import hmac
+import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import winreg
 import zipfile
 from pathlib import Path
+
+from util.UpdateManifest import UpdateManifest
 
 class UpdateManager:
 
@@ -14,65 +18,41 @@ class UpdateManager:
         self.app_name = app_name
         self.shared_dir = shared_dir
 
-        self._shared_version_file = shared_dir / "VERSION"
+        self._manifest_file = shared_dir / "manifest.json"
+        self.manifest = self._get_manifest()
 
     # ========================================================================================== #
     # Public APIs
     # ========================================================================================== #
 
     def check_for_updates(self) -> tuple[bool, str]:
+        """
+        Check whether a newer version of the application is available.
+
+        Returns:
+            tuple[bool, str]: Update availability and latest version.
+        """
+
         current_version = self.get_local_version()
-        latest_version = self.get_latest_version()
+        latest_version = self.manifest.version
 
         return (
             self._parse_version(latest_version) > self._parse_version(current_version),
             latest_version,
         )
 
-    def launch_updater(self, latest_version: str) -> None:
-        """
-        Copy the latest update ZIP from the shared drive into a temporary
-        staging directory, extract the content/updater, and launch it.
-        """
-
-        # Get the update ZIP for the latest version in the shared directory
-        source_zip = self._get_latest_zip(latest_version)
-
-        # Create a temp staging directory for the update
-        staging_dir = self._get_update_staging_dir(latest_version)
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir)
-
-        staging_dir.mkdir(parents=True)
-
-        # Stage the update ZIP locally so the updater can continue even if
-        # the shared drive becomes unavailable during the update
-        local_zip = staging_dir / source_zip.name
-        shutil.copy2(source_zip, local_zip)
-
-        # Extract the update contents into the temp staging directory
-        with zipfile.ZipFile(local_zip, "r") as zip_ref:
-            zip_ref.extractall(staging_dir)
-
-        # Locate the updater executable within the extracted files
-        updater_exe_name = "updater.exe"
-        updater_path = staging_dir / updater_exe_name
-        if not updater_path.exists():
-            raise FileNotFoundError(f"{updater_exe_name} not found in {source_zip.name}")
-
-        self._verify_updater_hash(updater_path)
-
-        # Launch the updater and pass the required metadata so it can
-        # locate the installed application and perform the update
-        subprocess.Popen([
-            str(updater_path),
-            "--app-name",
-            self.app_name,
-            "--target-version",
-            latest_version,
-        ])
-
     def get_local_version(self) -> str:
+        """
+        Retrieve the installed application version from the Windows registry.
+
+        Returns:
+            str: The installed application version.
+
+        Raises:
+            RuntimeError: If the DisplayVersion registry value is not found
+                in the Windows registry.
+        """
+
         key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
 
         try:
@@ -83,23 +63,71 @@ class UpdateManager:
         except FileNotFoundError:
             raise RuntimeError(f"DisplayVersion not found for {self.app_name}")
 
-    def get_installed_dir(self) -> Path:
-        key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
+    def launch_updater(self) -> None:
+        """
+        Copy the update package from the shared drive into a temporary
+        staging directory, extract the content/updater, and launch it.
 
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                install_dir, _ = winreg.QueryValueEx(key, "InstallLocation")
+        Raises:
+            FileNotFoundError: If any required file is missing.
+            RuntimeError: If any validation or hash verification fails.
+        """
 
-            return Path(install_dir)
-        except FileNotFoundError:
-            raise RuntimeError(f"InstallLocation not found for {self.app_name}")
+        # Retrieve the update package from the shared drive & verify its integrity
+        source_package = self.shared_dir / self.manifest.package_name
+        if not source_package.exists():
+            raise FileNotFoundError(f"Update package not found: {source_package}")
 
-    def get_latest_version(self) -> str:
-        return self._shared_version_file.read_text().strip()
+        self._verify_file_hash(source_package, self.manifest.package_sha256, "Update package")
+
+        # Create a temp staging directory for the update
+        latest_version = self.manifest.version
+        staging_dir = self._get_update_staging_dir(latest_version)
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+
+        staging_dir.mkdir(parents=True)
+
+        # Stage the update package locally so we can unzip the contents
+        local_package = staging_dir / source_package.name
+        shutil.copy2(source_package, local_package)
+        self._verify_file_hash(local_package, self.manifest.package_sha256, "Staged update package")
+
+        # Extract the update package into the temp staging directory
+        with zipfile.ZipFile(local_package, "r") as zip_ref:
+            zip_ref.extractall(staging_dir)
+
+        # Locate the updater executable within the extracted files
+        updater_path = staging_dir / self.manifest.updater_path
+        if not updater_path.exists():
+            raise FileNotFoundError(f"Updater executable not found in {source_package.name}: {updater_path}")
+
+        self._verify_file_hash(updater_path, self.manifest.updater_sha256, "Updater executable")
+
+        # Launch the updater and pass the required metadata so it can
+        # locate the installed application and perform the update
+        subprocess.Popen([
+            str(updater_path),
+            "--app-name",
+            self.app_name,
+            "--target-version",
+            latest_version,
+            "--app-dir",
+            self.manifest.app_dir,
+            "--preserve",
+            *self.manifest.preserve,
+        ])
 
     def cleanup_update_files(self, timeout_seconds: int = 5) -> None:
         """
         Remove any leftover update staging directories from previous runs.
+
+        The staging directory is using the local version, since the cleanup
+        is intended to remove files after an update attempt,
+        regardless of whether the update succeeded or not.
+
+        Args:
+            timeout_seconds (int): The maximum time to wait for file locks to be released.
         """
 
         staging_dir = self._get_update_staging_dir(self.get_local_version())
@@ -121,36 +149,72 @@ class UpdateManager:
     # ========================================================================================== #
 
     def _parse_version(self, version: str) -> tuple[int, int, int]:
+        """
+        Parse a version string in the format "major.minor.patch" into a tuple of integers.
+
+        Args:
+            version (str): The version string to parse.
+
+        Returns:
+            tuple[int, int, int]: A tuple containing the major, minor, and patch version.
+        """
+
         return tuple(int(part) for part in version.strip().split("."))
 
     def _get_update_staging_dir(self, target_version: str) -> Path:
+        """
+        Get the path to the temporary staging directory for the update.
+
+        Args:
+            target_version (str): The target version being updated to.
+
+        Returns:
+            Path: The path to the temporary staging directory.
+        """
+
         staging_dir = Path(tempfile.gettempdir())
 
         return staging_dir / f"{self.app_name}_{target_version}_staging"
 
-    def _get_latest_zip(self, latest_version: str) -> Path:
-        zip_files = list(self.shared_dir.glob("*.zip"))
-        if not zip_files:
-            raise FileNotFoundError(f"No zip file found in {self.shared_dir}")
+    def _get_manifest(self) -> UpdateManifest:
+        """
+        Load and validate the update manifest.json from the shared drive.
 
-        if len(zip_files) == 1:
-            return zip_files[0]
+        Returns:
+            UpdateManifest: The loaded update manifest in a dataclass.
 
-        matching_zip_files = [zip_file for zip_file in zip_files if latest_version in zip_file.name]
-        if len(matching_zip_files) == 1:
-            return matching_zip_files[0]
+        Raises:
+            FileNotFoundError: If the manifest file is missing.
+            RuntimeError: If the manifest is invalid or fails validation.
+        """
 
-        raise FileNotFoundError(
-            f"Could not identify the zip file for version {latest_version} in {self.shared_dir}"
-        )
+        if not self._manifest_file.exists():
+            raise FileNotFoundError(f"Manifest file not found: {self._manifest_file}")
 
-    def _verify_updater_hash(self, updater_path: Path) -> None:
-        hash_file = updater_path.with_name("updater.exe.sha256")
-        if not hash_file.exists():
-            raise FileNotFoundError(f"Missing updater hash file: {hash_file.name}")
+        # Using utf-8-sig encoding to tolerate potential BOM in the manifest file.
+        # It still handles regular UTF-8 files correctly, but will strip the BOM if it's present,
+        with open(self._manifest_file, "r", encoding="utf-8-sig") as file:
+            return UpdateManifest.from_dict(json.load(file))
 
-        expected_hash = hash_file.read_text(encoding="utf-8").split()[0].lower()
-        actual_hash = hashlib.sha256(updater_path.read_bytes()).hexdigest()
+    def _verify_file_hash(
+        self,
+        file_path: Path,
+        expected_hash: str,
+        description: str
+    ) -> None:
+        """
+        Compute the SHA-256 hash of the given file and compare it to the expected hash.
 
-        if not hmac.compare_digest(actual_hash, expected_hash):
-            raise RuntimeError("Updater executable hash verification failed")
+        Args:
+            file_path (Path): The path to the file to verify.
+            expected_hash (str): The expected SHA-256 hash in hexadecimal format.
+            description (str): A description of the file for error messages.
+
+        Raises:
+            RuntimeError: If the computed hash does not match the expected hash.
+        """
+
+        actual_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+
+        if not hmac.compare_digest(actual_hash, expected_hash.lower()):
+            raise RuntimeError(f"{description} hash verification failed")

@@ -76,40 +76,62 @@ jobs:
             --name "updater" `
             "scripts\CreateUpdater.py"
 
-      - name: Prepare Release Directory
+      - name: Prepare Package Directory
         shell: pwsh
         run: |
-          Remove-Item release -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path release
+          Remove-Item package -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path package
+          New-Item -ItemType Directory -Force -Path package\application
+          New-Item -ItemType Directory -Force -Path package\updater
 
           Copy-Item `
             "dist\${{ steps.config.outputs.app_name }}.exe" `
-            release\
+            package\application\
 
           Copy-Item `
             "dist\updater.exe" `
-            release\
-
-          $updaterHash = Get-FileHash `
-            -Algorithm SHA256 `
-            -Path "release\updater.exe"
-
-          Set-Content `
-            -Path "release\updater.exe.sha256" `
-            -Value "$($updaterHash.Hash.ToLowerInvariant())  updater.exe" `
-            -Encoding ascii
+            package\updater\
 
           Copy-Item `
             bin `
-            release\bin `
+            package\application\bin `
             -Recurse
 
       - name: Create Update ZIP
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path release\* `
+            -Path package\* `
             -DestinationPath "${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip"
+
+      - name: Create Update Manifest
+        shell: pwsh
+        run: |
+          $packageName = "${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip"
+
+          $packageHash = Get-FileHash `
+            -Algorithm SHA256 `
+            -Path $packageName
+
+          $updaterHash = Get-FileHash `
+            -Algorithm SHA256 `
+            -Path "package\updater\updater.exe"
+
+          $manifest = [ordered]@{
+            app_name = "${{ steps.config.outputs.app_name }}"
+            version = "${{ steps.version.outputs.version }}"
+            package_name = $packageName
+            package_sha256 = $packageHash.Hash.ToLowerInvariant()
+            app_dir = "application"
+            updater_path = "updater/updater.exe"
+            updater_sha256 = $updaterHash.Hash.ToLowerInvariant()
+            preserve = @("logs", "uninstall.exe")
+            created_at = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+          }
+
+          $json = $manifest | ConvertTo-Json
+          $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllText("manifest.json", $json, $utf8NoBom)
 
       - name: Install NSIS
         shell: pwsh
@@ -139,5 +161,6 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
+            manifest.json
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}.zip
             ${{ steps.config.outputs.app_name }}-${{ steps.version.outputs.version }}-setup.exe

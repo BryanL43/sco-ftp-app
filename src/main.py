@@ -44,7 +44,7 @@ def main():
         )
         if result:
             try:
-                update_manager.launch_updater(latest_version)
+                update_manager.launch_updater()
             except Exception as e:
                 Logger.exception("Update failed")
                 ErrorDialog.show("Update Failed", str(e), parent=dialog_root)

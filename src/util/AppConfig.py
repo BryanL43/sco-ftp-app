@@ -11,6 +11,10 @@ def _get_app_config_path() -> Path:
 def load_app_config() -> dict[str, str]:
     """
     Load and flatten all values from application.ini.
+
+    Returns:
+        dict[str, str]: A dictionary containing all configuration values from application.ini,
+            with keys in the format <section>_<key>.
     """
 
     app_config = _get_app_config_path()
