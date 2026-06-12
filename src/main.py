@@ -3,6 +3,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 
+from gui.ErrorDialog import ErrorDialog
 from util.AppConfig import load_app_config
 from util.Logger import Logger
 from util.UpdateManager import UpdateManager
@@ -14,6 +15,9 @@ SHARED_DIR = Path(r"C:\\Users\\bryan\\Desktop\\SharedDir\\sco-ftp-app-versioning
 
 def main():
     update_manager = UpdateManager(APP_NAME, SHARED_DIR)
+
+    # Hidden temporary Tkinter root window for showing
+    # dialogs during the update check process
     dialog_root = tk.Tk()
     dialog_root.withdraw()
 
@@ -43,7 +47,7 @@ def main():
                 update_manager.launch_updater(latest_version)
             except Exception as e:
                 Logger.exception("Update failed")
-                messagebox.showerror("Update Failed", str(e), parent=dialog_root)
+                ErrorDialog.show("Update Failed", str(e), parent=dialog_root)
                 dialog_root.destroy()
                 return
             else:
@@ -66,13 +70,15 @@ def main():
     ).start()
 
     # Create the main application UI
+    local_version = update_manager.get_local_version()
+
     root = tk.Tk()
-    root.title(APP_NAME)
+    root.title(APP_NAME + " v" + local_version)
     root.geometry("300x200")
 
     tk.Label(
         root,
-        text=f"{APP_NAME}\nVersion {update_manager.get_local_version()}",
+        text=f"{APP_NAME}\nVersion {local_version}",
     ).pack(expand=True)
 
     root.mainloop()

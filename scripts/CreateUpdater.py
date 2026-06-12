@@ -233,7 +233,10 @@ class CreateUpdater:
 
             root = tk.Tk()
             root.withdraw()
-            messagebox.showerror("Update Failed", message)
+            root.attributes("-topmost", True)
+            root.lift()
+            root.focus_force()
+            messagebox.showerror("Update Failed", message, parent=root)
             root.destroy()
 
         def _show_ui(self):
@@ -245,6 +248,10 @@ class CreateUpdater:
             self.root.title(f"Updating {self.app_name}")
             self.root.resizable(False, False)
             self._center_window(360, 110)
+            self.root.attributes("-topmost", True)
+            self.root.lift()
+            self.root.focus_force()
+            self.root.after(500, self.root.attributes, "-topmost", False)
 
             self.status_var = tk.StringVar(value="Updating")
             status_label = ttk.Label(self.root, textvariable=self.status_var, font=("Segoe UI", 11))
