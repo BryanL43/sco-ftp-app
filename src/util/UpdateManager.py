@@ -77,11 +77,11 @@ class UpdateManager:
 
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                version, _ = winreg.QueryValueEx(key, "AppVersion")
+                version, _ = winreg.QueryValueEx(key, "DisplayVersion")
 
             return version
         except FileNotFoundError:
-            raise RuntimeError(f"AppVersion not found for {self.app_name}")
+            raise RuntimeError(f"DisplayVersion not found for {self.app_name}")
 
     def get_installed_dir(self) -> Path:
         key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"

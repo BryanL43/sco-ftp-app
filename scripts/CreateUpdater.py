@@ -189,14 +189,14 @@ class CreateUpdater:
 
         key_path = fr"Software\Microsoft\Windows\CurrentVersion\Uninstall\{self.app_name}"
 
-        # Only update the AppVersion value since the updater does not change other metadata
+        # Only update the DisplayVersion value since the updater does not change other metadata
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             key_path,
             0,
             winreg.KEY_SET_VALUE,
         ) as key:
-            winreg.SetValueEx(key, "AppVersion", 0, winreg.REG_SZ, self.target_version)
+            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, self.target_version)
 
     # ========================================================================================== #
     # Updater UI

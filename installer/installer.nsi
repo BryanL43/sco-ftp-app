@@ -89,11 +89,11 @@ Section
 
   ; Windows programs registry
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-    "AppName" "${APP_NAME}"
+    "DisplayName" "${APP_NAME}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "UninstallString" '"$INSTDIR\${UNINSTALLER_NAME}"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-    "AppVersion" "${APP_VERSION}"
+    "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "InstallLocation" "$INSTDIR"
 
