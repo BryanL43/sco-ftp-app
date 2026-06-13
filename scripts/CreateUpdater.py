@@ -1,5 +1,5 @@
-import argparse
 import logging
+import json
 import sys
 import subprocess
 import threading
@@ -11,17 +11,21 @@ import winreg
 import shutil
 import tempfile
 from pathlib import Path
+from psutil import Process, NoSuchProcess, TimeoutExpired
 
 class CreateUpdater:
 
-    def __init__(self, app_name: str, target_version: str, app_dir: str, preserve: list[str]):
-        self.app_name = app_name
-        self.target_version = target_version
-        self.app_dir = app_dir
-        self.preserved_names = {name.lower() for name in preserve}
+    def __init__(self, payload: dict):
+        manifest = payload["manifest"]
+
+        self.app_name = manifest["app_name"]
+        self.target_version = manifest["version"]
+        self.app_dir = manifest["app_dir"]
+        self.preserved_names = {name.lower() for name in manifest["preserve"]}
+
+        self.application_pid = payload["application_pid"]
 
         self.install_dir = self.get_installed_dir()
-
         self.staging_dir = (
             Path(tempfile.gettempdir())
             / f"{self.app_name}_{self.target_version}_staging"
@@ -29,6 +33,7 @@ class CreateUpdater:
         self.app_staging_dir = self.staging_dir / self.app_dir
 
         self.logger = self._setup_logger()
+        self.updater_ui = self.UpdaterUI(self.app_name)
 
     def get_installed_dir(self) -> Path:
         """
@@ -79,10 +84,29 @@ class CreateUpdater:
     def run(self) -> None:
         """Main execution point for the updater."""
 
-        self._wait_for_file_unlock()
-        self._validate_staged_payload()
-        self._install_update()
-        self._update_registry()
+        self.updater_ui.start()
+        ui_started_at = time.monotonic()
+        update_successful = False
+
+        try:
+            try:
+                self._wait_for_process_exit()
+                self._validate_staged_payload()
+                self._install_update()
+                self._update_registry()
+
+                update_successful = True
+            finally:
+                # Give users a moment to register completion before the updater UI closes
+                time.sleep(max(0, 2 - (time.monotonic() - ui_started_at)))
+                self.updater_ui.stop()
+
+            if update_successful:
+                self.restart_application()
+        except Exception as exc:
+            self.logger.exception("Update failed")
+            self.updater_ui.show_error_dialog(str(exc))
+            sys.exit(1)
 
     def restart_application(self) -> None:
         """
@@ -98,31 +122,30 @@ class CreateUpdater:
 
         subprocess.Popen([str(app_path)], cwd=str(self.install_dir))
 
-    def _wait_for_file_unlock(self, timeout_seconds: int = 10) -> None:
+    def _wait_for_process_exit(self, timeout_seconds: int = 10) -> None:
         """
-        Wait for the main application executable to be unlocked (i.e. no longer in use by the system)
+        Wait for the main application process to exit before applying the update.
 
         Args:
-            timeout_seconds (int): Maximum time to wait for the application to exit.
+            timeout_seconds: Maximum time to wait for the application to exit.
 
         Raises:
-            TimeoutError: If the application process does not exit within the specified timeout.
+            TimeoutError: If the application process does not exit within the timeout.
+            RuntimeError: If the application PID does not match the expected executable.
         """
 
-        exe_path = self.install_dir / f"{self.app_name}.exe"
+        try:
+            # Get the process
+            process = Process(self.application_pid)
+            if process.name().lower() != f"{self.app_name}.exe".lower():
+                raise RuntimeError(f"PID {self.application_pid} is not {self.app_name}.exe")
 
-        deadline = time.time() + timeout_seconds
-
-        while time.time() < deadline:
-            try:
-                # Attempt to open the executable with append binary mode,
-                # which will fail if the file is locked by another process
-                with open(exe_path, "ab"):
-                    return
-            except PermissionError:
-                time.sleep(0.5)
-
-        raise TimeoutError(f"Timed out waiting for {exe_path} to unlock.")
+            # Wait for process to terminate
+            process.wait(timeout=timeout_seconds)
+        except NoSuchProcess:
+            return
+        except TimeoutExpired:
+            raise TimeoutError(f"Timed out waiting for {self.app_name} to exit")
 
     def _validate_staged_payload(self) -> None:
         """
@@ -213,7 +236,7 @@ class CreateUpdater:
             )
 
     # ========================================================================================== #
-    # Updater UI
+    # Subclass Updater UI
     # ========================================================================================== #
 
     class UpdaterUI:
@@ -303,60 +326,26 @@ class CreateUpdater:
 
 
 if __name__ == "__main__":
-    """
-    Parse the command line arguments to get the metadata.
-    The updater is a standalone executable that receives the
-    update metadata as command line arguments from the main
-    application process before execution.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--app-name",
-        required=True,
-    )
-    parser.add_argument(
-        "--target-version",
-        required=True,
-    )
-    parser.add_argument(
-        "--app-dir",
-        required=True,
-    )
-    parser.add_argument(
-        "--preserve",
-        nargs="*",
-        default=[],
-    )
 
-    args = parser.parse_args()
-
-    # Create and run the updater
-    updater = CreateUpdater(
-        app_name=args.app_name,
-        target_version=args.target_version,
-        app_dir=args.app_dir,
-        preserve=args.preserve,
-    )
-
-    # Start the visual front updater UI in a separate thread
-    updater_ui = CreateUpdater.UpdaterUI(args.app_name)
-    updater_ui.start()
-    ui_started_at = time.monotonic()
-
-    update_successful = False
-
+    # Parse the updater payload provided by the launcher
     try:
-        try:
-            updater.run()
-            update_successful = True
-        finally:
-            # Induce a tiny delay to reduce the jarring UI transition for the user
-            time.sleep(max(0, 2 - (time.monotonic() - ui_started_at)))
-            updater_ui.stop()
+        if sys.stdin is None:
+            raise RuntimeError("Malformed update request")
 
-        if update_successful:
-            updater.restart_application()
-    except Exception as exc:
-        updater.logger.exception("Update failed")
-        updater_ui.show_error_dialog(str(exc))
+        payload = json.load(sys.stdin)
+    except Exception:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        root.lift()
+        root.focus_force()
+        messagebox.showerror(
+            "Update Failed",
+            "Malformed update request",
+            parent=root,
+        )
+        root.destroy()
         sys.exit(1)
+
+    # Run the updater
+    CreateUpdater(payload).run()

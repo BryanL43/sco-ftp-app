@@ -1,3 +1,4 @@
+import os
 import hashlib
 import hmac
 import json
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import time
 import zipfile
+from dataclasses import asdict
 from pathlib import Path
 
 from util.ApplicationRegistry import ApplicationRegistry
@@ -46,7 +48,7 @@ class UpdateManager:
     def launch_updater(self) -> None:
         """
         Copy the update package from the shared drive into a temporary
-        staging directory, extract the content/updater, and launch it.
+        staging directory, extract the content, and launch the updater.
 
         Raises:
             FileNotFoundError: If any required file is missing.
@@ -84,19 +86,25 @@ class UpdateManager:
 
         self._verify_file_hash(updater_path, self.manifest.updater_sha256, "Updater executable")
 
-        # Launch the updater and pass the required metadata so it can
+        # Launch the updater and pass the manifest so it can
         # locate the installed application and perform the update
-        subprocess.Popen([
-            str(updater_path),
-            "--app-name",
-            self.app_name,
-            "--target-version",
-            latest_version,
-            "--app-dir",
-            self.manifest.app_dir,
-            "--preserve",
-            *self.manifest.preserve,
-        ])
+        payload = {
+            "manifest": asdict(self.manifest),
+            "application_pid": os.getpid(),
+        }
+
+        updater = subprocess.Popen(
+            [str(updater_path)],
+            stdin=subprocess.PIPE,
+            text=True,
+
+            # Controls where the process is running from (updater runs in staging temp dir not in the app).
+            # This prevents conflict with accidental mismatch .lnk 'Start in' property.
+            cwd=str(updater_path.parent),
+        )
+
+        with updater.stdin:
+            json.dump(payload, updater.stdin)
 
     def cleanup_update_files(self, timeout_seconds: int = 5) -> None:
         """

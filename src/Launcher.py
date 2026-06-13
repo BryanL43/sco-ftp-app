@@ -79,7 +79,6 @@ class Launcher:
             ),
             parent=dialog_root,
         )
-
         if not result:
             dialog_root.destroy()
             return
@@ -93,7 +92,7 @@ class Launcher:
             return
 
         dialog_root.destroy()
-        sys.exit(0) # Terminate the app so that the updater can apply patch
+        sys.exit(0) # Terminate the application to allow the updater to perform patching
 
     def _cleanup_update_files(self) -> None:
         """
@@ -116,6 +115,7 @@ class Launcher:
         """
         Main entry point for the application
         """
+
         local_version = self._get_display_version()
 
         root = tk.Tk()

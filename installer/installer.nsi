@@ -77,10 +77,11 @@ Function .onInit
 FunctionEnd
 
 Section
+  ; Install main executable
   SetOutPath "$INSTDIR"
-
   File "${APP_TO_PACKAGE_EXE}"
 
+  ; Install bundled files
   SetOutPath "$INSTDIR\bin"
   File /r "..\bin\*"
 
@@ -91,15 +92,23 @@ Section
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "DisplayName" "${APP_NAME}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-    "UninstallString" '"$INSTDIR\${UNINSTALLER_NAME}"'
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
+    "DisplayIcon" "$INSTDIR\${APP_NAME}.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
     "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
+    "UninstallString" '"$INSTDIR\${UNINSTALLER_NAME}"'
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
+    "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
+    "NoRepair" 1
 
-  ; Shortcuts
-  CreateDirectory "$SMPROGRAMS\${APP_NAME}"
+  ; Reset the out path for the shortcuts
+  ; It dicatates the 'Start in' property in the lnk
+  SetOutPath "$INSTDIR"
 
+  ; Start Menu shortcut
   CreateShortcut \
     "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" \
     "$INSTDIR\${APP_NAME}.exe"
@@ -108,6 +117,7 @@ Section
     "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" \
     "$INSTDIR\${UNINSTALLER_NAME}"
 
+  ; Desktop shortcut
   CreateShortcut \
     "$DESKTOP\${APP_NAME}.lnk" \
     "$INSTDIR\${APP_NAME}.exe"
@@ -122,9 +132,9 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
 
-  ; Remove application files
-  RMDir /r "$INSTDIR"
-
   ; Remove programs entry and application registry data
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+
+  ; Remove application files
+  RMDir /r "$INSTDIR"
 SectionEnd
