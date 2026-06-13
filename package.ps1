@@ -92,6 +92,7 @@ $packageHash = Get-FileHash -Algorithm SHA256 -Path $packagePath
 $updaterHash = Get-FileHash -Algorithm SHA256 -Path (Join-Path $updaterDir "updater.exe")
 
 $manifest = [ordered]@{
+  manifest_version = 1
   app_name = $appName
   version = $Version
   package_name = $packageName
@@ -104,13 +105,10 @@ $manifest = [ordered]@{
 }
 
 $json = $manifest | ConvertTo-Json -Depth 3
-$json = $json -replace '":\s+', '": '
-
-$preserveJson = (($manifest.preserve | ConvertTo-Json -Compress) -replace '","', '", "')
-$json = $json -replace '(?s)"preserve":\s*\[.*?\]', "`"preserve`": $preserveJson"
 
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($manifestPath, $json, $utf8NoBom)
+
 
 "Created local update package: $packagePath"
 "Created local update manifest: $manifestPath"

@@ -8,6 +8,7 @@ of the update manifest.json file used for application updates.
 @dataclass(frozen=True)
 class UpdateManifest:
 
+    manifest_version: int
     app_name: str
     version: str
     package_name: str

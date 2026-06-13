@@ -118,6 +118,7 @@ jobs:
             -Path "package\updater\updater.exe"
 
           $manifest = [ordered]@{
+            manifest_version = 1
             app_name = "${{ steps.config.outputs.app_name }}"
             version = "${{ steps.version.outputs.version }}"
             package_name = $packageName
@@ -130,13 +131,9 @@ jobs:
           }
 
           $json = $manifest | ConvertTo-Json -Depth 3
-          $json = $json -replace '":\s+', '": '
-
-          $preserveJson = (($manifest.preserve | ConvertTo-Json -Compress) -replace '","', '", "')
-          $json = $json -replace '(?s)"preserve":\s*\[.*?\]', "`"preserve`": $preserveJson"
 
           $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-          [System.IO.File]::WriteAllText($manifestPath, $json, $utf8NoBom)
+          [System.IO.File]::WriteAllText("manifest.json", $json, $utf8NoBom)
 
       - name: Install NSIS
         shell: pwsh
